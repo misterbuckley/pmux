@@ -145,7 +145,7 @@ Running: PORT=3000 HOST=localhost DEBUG=true npm run dev
 
 ### Shell Integration
 
-PMux outputs bash commands that need to be sourced by your shell. Create a function (not an alias) in your shell rc file:
+PMux outputs bash commands that need to be sourced by your shell. Create a function in your shell rc file:
 
 ```bash
 # ~/.bashrc or ~/.zshrc
@@ -159,7 +159,12 @@ pmux() {
 }
 ```
 
-**Important**: Use a shell function, not an alias, to ensure arguments are passed correctly.
+Alternatively, you can create an alias that defines a function, such as:
+
+```bash
+# ~/.bash_aliases
+alias pmux='function _pmux(){ eval $(/path/to/pmux/pmux_script "$@"); };_pmux'
+```
 
 ### Shell Completion
 
