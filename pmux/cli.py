@@ -100,9 +100,15 @@ def create_parser():
     to_parser = subparsers.add_parser('to', help='Navigate to a project')
     to_parser.add_argument('project', help='Project name or alias')
     to_parser.add_argument(
-        '--no-autorun',
+        '-a', '--autorun',
         action='store_true',
-        help='Skip autorun commands'
+        help='Run configured autorun commands'
+    )
+    to_parser.add_argument(
+        '-r', '--run',
+        metavar='CMD',
+        dest='run_command',
+        help='Run pmux command after switching (e.g., "start")'
     )
     
     # 'env' command
@@ -167,11 +173,59 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         return 1
     
-    # Parse known args (this allows unknown custom commands to pass through)
-    try:
-        args, unknown = parser.parse_known_args(argv)
-    except SystemExit as e:
-        return e.code if e.code is not None else 1
+    # Before parsing, we need to check if the first positional arg (after flags)
+    # might be a custom command. If so, we parse flags separately to avoid argparse errors.
+    
+    # First, extract potential command name (first non-flag argument that's not a flag value)
+    # We need to skip flag values like the PATH in '--config PATH'
+    potential_command = None
+    skip_next = False
+    for i, arg in enumerate(argv):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.startswith('-'):
+            # Check if this flag takes a value
+            if arg in ['--config', '-h', '--help', '--version'] or arg == '--config':
+                # --config takes a value, so skip the next arg
+                if arg == '--config':
+                    skip_next = True
+            continue
+        # This is a positional argument (potential command)
+        potential_command = arg
+        break
+    
+    # Check if this is a known built-in command
+    builtin_commands = {'to', 'env', 'config', 'list', 'completion'}
+    is_builtin = potential_command in builtin_commands
+    
+    # If it's not a built-in, we need to parse differently to avoid argparse validation errors
+    if potential_command and not is_builtin:
+        # Parse global flags separately
+        temp_parser = StderrArgumentParser(add_help=False)
+        temp_parser.add_argument('-h', '--help', action='store_true')
+        temp_parser.add_argument('--version', action='store_true')
+        temp_parser.add_argument('-v', action='count', default=0, dest='verbosity')
+        temp_parser.add_argument('--config', metavar='PATH')
+        
+        try:
+            temp_args, remaining = temp_parser.parse_known_args(argv)
+            # Create an args namespace with the command
+            import argparse
+            args = argparse.Namespace()
+            args.command = remaining[0] if remaining else None
+            args.verbosity = temp_args.verbosity
+            args.config = temp_args.config if hasattr(temp_args, 'config') else None
+            args.help = temp_args.help if hasattr(temp_args, 'help') else False
+            args.version = temp_args.version if hasattr(temp_args, 'version') else False
+        except SystemExit as e:
+            return e.code if e.code is not None else 1
+    else:
+        # Parse normally for built-in commands
+        try:
+            args, unknown = parser.parse_known_args(argv)
+        except SystemExit as e:
+            return e.code if e.code is not None else 1
     
     # Handle help manually
     if hasattr(args, 'help') and args.help:

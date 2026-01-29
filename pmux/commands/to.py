@@ -20,7 +20,7 @@ class ToCommand(BaseCommand):
         Execute the 'to' command.
         
         Args:
-            args: Parsed arguments with 'project' and 'no_autorun' attributes
+            args: Parsed arguments with 'project', 'autorun', and 'run_command' attributes
         
         Returns:
             Exit code
@@ -62,14 +62,50 @@ class ToCommand(BaseCommand):
             logger.info(f"Auto-loading environment: {env_name}")
             self._load_environment(project, env_name)
         
-        # Run autorun commands unless --no-autorun
-        if not args.no_autorun and 'autorun' in project:
+        # Run autorun commands if --autorun flag is set
+        if hasattr(args, 'autorun') and args.autorun and 'autorun' in project:
             logger.info(f"Running autorun commands")
             for cmd in project['autorun']:
                 # In verbose mode, show what we're running
                 if self.executor.verbose:
                     self.executor.echo(f"Running: {cmd}", color="info")
                 self.executor.run(cmd)
+        
+        # Run specified command if --run is provided
+        if hasattr(args, 'run_command') and args.run_command:
+            cmd_name = args.run_command.strip()
+            if not cmd_name:
+                self.executor.echo("Error: Empty command specified", color="danger")
+                return 1
+            
+            logger.info(f"Running command: {cmd_name}")
+            
+            # Temporarily set the current project context for command lookup
+            # This allows project-specific commands to be found
+            original_project = self.core.current_project
+            self.core.current_project = project
+            
+            try:
+                # Check if command exists (built-in or custom)
+                is_builtin = cmd_name in self.core.commands
+                is_custom = self.core.custom_command.can_handle(cmd_name)
+                
+                if not is_builtin and not is_custom:
+                    self.executor.echo(f"Error: Unknown command '{cmd_name}'", color="danger")
+                    return 1
+                
+                # Create a simple args namespace for the command
+                import argparse
+                cmd_args = argparse.Namespace()
+                cmd_args.command = cmd_name
+                
+                # Execute the command
+                exit_code = self.core.run_command(cmd_name, cmd_args)
+                if exit_code != 0:
+                    return exit_code
+            finally:
+                # Restore original project context
+                self.core.current_project = original_project
         
         return 0
     
